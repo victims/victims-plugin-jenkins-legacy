@@ -1,6 +1,10 @@
 package com.redhat.victims.plugin.jenkins;
 
+import java.io.PrintStream;
 import java.util.*;
+import java.util.Map.Entry;
+
+import javax.swing.plaf.TextUI;
 
 import com.redhat.victims.VictimsException;
 
@@ -150,6 +154,18 @@ public final class Settings {
      */
     public String get(String k) {
         return settings.get(k);
+    }
+    
+    /**
+     * Use the supplied log to display the current settings.
+     * @param log Log to send output to.
+     */
+    public void show(PrintStream log)
+    {
+        log.println("[VICTIMS] ------- CONFIG -------");
+        for (Entry<String, String> kv : settings.entrySet()){
+          log.println("[VICTIMS] " + kv.getKey() + " : " + kv.getValue());
+        }
     }
 
     /**
