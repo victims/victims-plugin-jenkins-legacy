@@ -1,16 +1,46 @@
 package com.redhat.victims.plugin.jenkins;
 
+/*
+ * #%L
+ * This file is part of victims-plugin-jenkins.
+ * %%
+ * Copyright (C) 2013 The Victims Project
+ * %%
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * #L%
+ */
+
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.FilenameUtils;
-import org.apache.tools.ant.types.resources.LogOutputResource;
+import org.apache.commons.io.filefilter.DirectoryFileFilter;
+import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.QueryParameter;
 
 import com.redhat.victims.VictimsConfig;
 import com.redhat.victims.VictimsException;
@@ -20,7 +50,6 @@ import com.redhat.victims.database.VictimsDBInterface;
 
 import hudson.AbortException;
 import hudson.Extension;
-import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.BuildListener;
 import hudson.model.AbstractBuild;
@@ -29,30 +58,32 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Publisher;
 import hudson.tasks.Recorder;
+import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 
 public class VictimsPostBuildScanner extends Recorder {
-
-    private String baseUrl      = Settings.BASE_URL_DEFAULT;
-    private String entryPoint   = Settings.ENTRY_DEFAULT;
-    private String metadata     = Settings.MODE_WARNING;
-    private String fingerprint  = Settings.MODE_WARNING;
-    private String updates      = Settings.UPDATES_AUTO;
-    private String jdbcDriver   = VictimsDB.defaultDriver();
-    private String jdbcUrl      = "";
+    
+    private String baseUrl = Settings.BASE_URL_DEFAULT;
+    private String entryPoint = Settings.ENTRY_DEFAULT;
+    private String metadata = Settings.MODE_WARNING;
+    private String fingerprint = Settings.MODE_WARNING;
+    private String updates = Settings.UPDATES_AUTO;
+    private String jdbcDriver = VictimsDB.defaultDriver();
+    private String jdbcUrl = VictimsDB.defaultURL();
     private String jdbcUsername = Settings.USER_DEFAULT;
     private String jdbcPassword = Settings.PASS_DEFAULT;
-    private String outputDir    = System.getenv("BUILD_URL"); // Environment var set by jenkins
-    
+    private String outputDir = "";
+    private Boolean printCheckedFiles = false;
+
     public ExecutionContext ctx;
 
     @DataBoundConstructor
     public VictimsPostBuildScanner(final String baseUrl,
-                                    final String entryPoint, final String metadata,
-                                    final String fingerprint, final String updates,
-                                    final String jdbcDriver, final String jdbcUrl,
-                                    final String jdbcUsername, final String jdbcPassword,
-                                    final String outputDir) {
+            final String entryPoint, final String metadata,
+            final String fingerprint, final String updates,
+            final String jdbcDriver, final String jdbcUrl,
+            final String jdbcUsername, final String jdbcPassword,
+            final String outputDir, final Boolean printCheckedFiles) {
         setBaseUrl(baseUrl);
         setEntryPoint(entryPoint);
         setMetadata(metadata);
@@ -63,6 +94,7 @@ public class VictimsPostBuildScanner extends Recorder {
         setJdbcUsername(jdbcUsername);
         setJdbcPassword(jdbcPassword);
         setOutputDir(outputDir);
+        setPrintCheckedFiles(printCheckedFiles);
     }
 
     // Descriptor Implementation
@@ -81,7 +113,8 @@ public class VictimsPostBuildScanner extends Recorder {
         public ListBoxModel doFillMetadataItems() {
             ListBoxModel items = new ListBoxModel();
             for (String wt : Settings.ListModes()) {
-                items.add(wt.substring(0, 1).toUpperCase() + wt.substring(1), wt);
+                items.add(wt.substring(0, 1).toUpperCase() + wt.substring(1),
+                        wt);
             }
             return items;
         }
@@ -93,7 +126,8 @@ public class VictimsPostBuildScanner extends Recorder {
         public ListBoxModel doFillUpdatesItems() {
             ListBoxModel items = new ListBoxModel();
             for (String up : Settings.ListUpdates()) {
-                items.add(up.substring(0, 1).toUpperCase() + up.substring(1), up);
+                items.add(up.substring(0, 1).toUpperCase() + up.substring(1),
+                        up);
             }
             return items;
         }
@@ -110,11 +144,10 @@ public class VictimsPostBuildScanner extends Recorder {
             return VictimsDB.defaultDriver();
         }
 
-        /* Currently not working (dependency clash?)
+        /* Currently not working (dependency clash?) */
         public String getDefaultJdbcUrl() {
             return VictimsDB.defaultURL();
         }
-        */
 
         public String getDefaultJdbcUsername() {
             return Settings.USER_DEFAULT;
@@ -124,8 +157,60 @@ public class VictimsPostBuildScanner extends Recorder {
             return Settings.PASS_DEFAULT;
         }
         
-        public String getDefaultOutputDir() {
-            return System.getenv("BUILD_URL");
+        // Jenkins form validation methods
+        public FormValidation doCheckBaseUrl(@QueryParameter final String baseUrl) {
+            FormValidation fv;
+            
+            if(!baseUrl.equals("")) {
+                fv = FormValidation.ok();
+                return fv;
+            }
+            fv = FormValidation.error("Base Url cannot be empty");
+            return fv;
+        }
+        
+        public FormValidation doCheckEntryPoint(@QueryParameter final String entryPoint) {
+            FormValidation fv;
+            
+            if(!entryPoint.equals("")) {
+                fv = FormValidation.ok();
+                return fv;
+            }
+            fv = FormValidation.error("Entry Point cannot be empty");
+            return fv;
+        }
+        
+        public FormValidation doCheckJdbcDriver(@QueryParameter final String jdbcDriver) {
+            FormValidation fv;
+            
+            if(!jdbcDriver.equals("")) {
+                fv = FormValidation.ok();
+                return fv;
+            }
+            fv = FormValidation.error("No jdbc driver supplied");
+            return fv;
+        }
+        
+        public FormValidation doCheckJdbcUrl(@QueryParameter final String jdbcUrl) {
+            FormValidation fv;
+            
+            if(!jdbcUrl.equals("")) {
+                fv = FormValidation.ok();
+                return fv;
+            }
+            fv = FormValidation.error("No jdbc url supplied");
+            return fv;
+        }
+        
+        public FormValidation doCheckOutputDir(@QueryParameter final String outputDir) {
+            FormValidation fv;
+            
+            if(!outputDir.equals("")) {
+                fv = FormValidation.ok();
+                return fv;
+            }
+            fv = FormValidation.error("Output location cannot be empty");
+            return fv;
         }
     }
 
@@ -144,20 +229,25 @@ public class VictimsPostBuildScanner extends Recorder {
 
     // Function that is run when project is built
     @Override
-    public boolean perform(AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) throws IOException {
-        if (!setupExecutionContext(listener.getLogger())) {
-            // Returning false has been deprecated, throw exception instead.
-            throw new AbortException();
-        }
+    public boolean perform(AbstractBuild<?, ?> build, Launcher launcher,
+            BuildListener listener) throws IOException, AbortException {
+        PrintStream log = listener.getLogger();
+        
+        log.println(TextUI.box("STARTING VICTIMS SCAN"));
+        
+        setupExecutionContext(listener.getLogger());
+        execute();
+
+        listener.getLogger().println(TextUI.box("FINISHED VICTIMS SCAN"));
         
         return true;
     }
 
-    public boolean setupExecutionContext(PrintStream log) {
+    private void setupExecutionContext(PrintStream log) throws AbortException {
         ctx = new ExecutionContext();
         ctx.setSettings(new Settings());
         ctx.setLog(log);
-        
+
         ctx.getSettings().set(VictimsConfig.Key.URI, baseUrl);
         ctx.getSettings().set(VictimsConfig.Key.DB_DRIVER, jdbcDriver);
         ctx.getSettings().set(VictimsConfig.Key.DB_URL, jdbcUrl);
@@ -167,72 +257,207 @@ public class VictimsPostBuildScanner extends Recorder {
         ctx.getSettings().set(VictimsConfig.Key.DB_USER, jdbcUsername);
         ctx.getSettings().set(VictimsConfig.Key.DB_PASS, jdbcPassword);
         ctx.getSettings().set(Settings.UPDATE_DATABASE, updates);
-        
+
         System.setProperty(VictimsConfig.Key.ALGORITHMS, "SHA512");
-        
+
         try {
             VictimsResultCache cache = new VictimsResultCache();
             ctx.setCache(cache);
-            
+
             VictimsDBInterface db = VictimsDB.db();
             ctx.setDatabase(db);
-            
+
             ctx.getSettings().validate();
             ctx.getSettings().show(ctx.getLog());
         } catch (VictimsException e) {
             log.println("[VICTIMS] ERROR:");
             log.println(e.getMessage());
-            return false;
+            throw new AbortException();
         }
-        
-        return true;
     }
-    
+
     /**
      * Creates and synchronises the database then checks supplied dependencies
      * against the vulnerability database.
      */
-    public void execute()
-    {
+    private void execute() throws AbortException {
+        VictimsResultCache cache = ctx.getCache();
+        int cores = Runtime.getRuntime().availableProcessors();
+        ExecutorService executor = null;
+        List<Future<FileStub>> jobs = null;
+        PrintStream log = ctx.getLog();
+        boolean buildFailure = false;
+        ArrayList<VulnerableDependencyException> vulnerabilities = new ArrayList<VulnerableDependencyException>();
+
+        try {
+            // All files will be scanned for vulnerabilities and reported on at the end
+            // rather than fail at the first one
+            
+            // Sync database
+            updateDatabase(ctx);
+            // Concurrency, yay!
+            executor = Executors.newFixedThreadPool(cores);
+            jobs = new ArrayList<Future<FileStub>>();
+
+            // Find all files under supplied path
+            Collection<File> sources = listFiles(this.outputDir);
+            log.println("Scanning Files:");
+            for (File f : sources) {
+                if (printCheckedFiles) {
+                  log.println("\t- " + f.getAbsolutePath());    
+                }
+                FileStub fs;
+                try {
+                    fs = new FileStub(f);
+                } catch (Exception e) {
+                    log.println("ERROR : unable to generate filestub for file: " + f.getAbsolutePath());
+                    continue;
+                }
+                String fsid = fs.getId();
+                // Check the cache
+                if (cache.exists(fsid)) {
+                    HashSet<String> cves = cache.get(fsid);
+                    
+                    if(printCheckedFiles) {
+                        log.println("Cached: " + fsid);
+                    }
+                    
+                    /* Report vulnerabilities */
+                    if (!cves.isEmpty()) {
+                        VulnerableDependencyException err = new VulnerableDependencyException(
+                                fs, Settings.FINGERPRINT, cves);
+                        vulnerabilities.add(err);
+                        log.println(err.getLogMessage());
+                        if (err.isFatal(ctx)) {
+                            buildFailure = true;
+                        }
+                    }
+                    continue;
+                }
+
+                // Process dependencies that haven't been cached
+                Callable<FileStub> worker = new VictimsCommand(ctx, fs);
+                jobs.add(executor.submit(worker));
+            }
+            executor.shutdown();
+            
+            // Check the results
+            for (Future<FileStub> future : jobs) {
+                try {
+                    FileStub checked = future.get();
+                    if (checked != null) {
+                        cache.add(checked.getId(), null);
+                    }
+                } catch (InterruptedException ie) {
+                    log.println(ie.getMessage());
+                } catch (ExecutionException e) {
+
+                    Throwable cause = e.getCause();
+                    if (cause instanceof VulnerableDependencyException) {
+                        VulnerableDependencyException vbe = (VulnerableDependencyException) cause;
+                        cache.add(vbe.getId(), vbe.getVulnerabilites());
+
+                        // Add exception to list for logging as group
+                        vulnerabilities.add(vbe);
+                        log.println(vbe.getLogMessage());
+
+                        if (vbe.isFatal(ctx)) {
+                            buildFailure = true;
+                        }
+                    } else {
+                        throw new VictimsBuildException(e.getCause().getMessage());
+                    }
+                }
+            }
+        } catch (VictimsException ve) {
+            log.println("vic exception found: " + ve.getMessage());
+            throw new VictimsBuildException(ve.getMessage());
+
+        } finally {
+            if (executor != null) {
+                executor.shutdown();
+            }
+        }
         
+        if (!vulnerabilities.isEmpty()) {
+            for(VulnerableDependencyException ex : vulnerabilities) {
+                log.println(ex.getErrorMessage());
+            }
+        }
+        
+        if (buildFailure) {
+            throw new AbortException("Vulnerable jar found");
+        }
+    }
+
+    /**
+     * Updates the database according to the given configuration
+     * 
+     * @param ctx
+     * @throws VictimsException
+     */
+    private void updateDatabase(ExecutionContext context)
+            throws VictimsException {
+        VictimsDBInterface db = context.getDatabase();
+        PrintStream log = context.getLog();
+
+        Date updated = db.lastUpdated();
+
+        // update: auto
+        if (context.updateAlways()) {
+            log.println("Updating database");
+            db.synchronize();
+        } else if (context.updateDaily()) { // update: daily
+            Date today = new Date();
+            SimpleDateFormat cmp = new SimpleDateFormat("yyyyMMdd");
+            boolean updatedToday = cmp.format(today)
+                    .equals(cmp.format(updated));
+
+            if (!updatedToday) {
+                log.println("Updating database");
+                db.synchronize();
+            } else {
+                log.println("Database last updated: "
+                        + updated.toString());
+            }
+        } else { // update: disabled
+            log.println("Database synchronization disabled.");
+        }
     }
     
-    public boolean doStuff(AbstractBuild<?, ?> build, PrintStream logger) throws IOException {
-        
-        
-        FilePath projectWorkspace = build.getWorkspace();
-
-        DateFormat dateFormat = new SimpleDateFormat("mm_ss");
-        Date date = new Date();
-
-        String newFile = projectWorkspace + "/" + dateFormat.format(date)
-                + ".txt";
-
-        File f = new File(newFile);
-
-        long check = FileUtils.checksumCRC32(f);
-        
-        if (!f.exists()) {
-            f.createNewFile();
+    /**
+     * Return a list of all jars in the output directory or the specified
+     * jar as a list.  As these files/directory might not prior to the
+     * build we are checking their existence here rather than during the
+     * configuration of the VictimsPostBuildScanner.
+     * 
+     * @return a list of jars to scan for vulnerabilities
+     * @throws AbortException
+     */
+    public Collection<File> listFiles(String outputDirectory) throws AbortException
+    {  
+        File outputFile = new File(outputDirectory);
+        if (!outputFile.exists()) {
+            // Output file/dir should exist by now.
+            throw new AbortException("Output directory/file does not exist");
         }
-
-        logger.println("[VICTIMS] ------------------------------------------------------------------------");
-        logger.println("[VICTIMS] Starting scan for vulnerable jars");
-        logger.println("[VICTIMS] Config:");
-        logger.println("[VICTIMS]	baseUrl : " + this.baseUrl);
-        logger.println("[VICTIMS]	entryPoint : " + this.entryPoint);
-        logger.println("[VICTIMS]	metadata : " + this.metadata);
-        logger.println("[VICTIMS]	fingerprint : " + this.fingerprint);
-        logger.println("[VICTIMS]	updates : " + this.updates);
-        logger.println("[VICTIMS]	jdbcDriver : " + this.jdbcDriver);
-        logger.println("[VICTIMS]	jdbcURL : " + this.jdbcUrl);
-        logger.println("[VICTIMS]	jdbcUsername : " + this.jdbcUsername);
-        logger.println("[VICTIMS]	jdbcPassword : " + this.jdbcPassword);
-        logger.println("[VICTIMS] ------------------------------------------------------------------------");
-
-        return true;
+        
+        if (outputFile.isFile())
+        {
+            Collection<File> file = new ArrayList<File>();
+            file.add(outputFile);
+            return file;
+        }
+        
+        if (outputFile.isDirectory()) {
+            Collection<File> files = FileUtils.listFiles(outputFile, new RegexFileFilter("^(.*?)\\.jar"), DirectoryFileFilter.DIRECTORY);
+            return files;
+        }
+        
+        // Something has gone horribly wrong
+        throw new AbortException("Supplied output location is neither a file nor directory");
     }
-
+    
     // Getters and Setters
     public String getBaseUrl() {
         return baseUrl;
@@ -305,13 +530,21 @@ public class VictimsPostBuildScanner extends Recorder {
     public void setJdbcPassword(final String jdbcPassword) {
         this.jdbcPassword = jdbcPassword;
     }
-    
+
     public String getOutputDir() {
         return outputDir;
     }
-    
+
     public void setOutputDir(final String outputDir) {
         this.outputDir = outputDir;
+    }
+    
+    public Boolean getPrintCheckedFiles() {
+        return printCheckedFiles;
+    }
+    
+    public void setPrintCheckedFiles(Boolean b) {
+        this.printCheckedFiles = b;
     }
 
 }

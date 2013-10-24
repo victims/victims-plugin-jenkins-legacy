@@ -36,7 +36,11 @@
 		<f:textbox field="jdbcPassword" default="${descriptor.defaultJdbcPassword}" />
 	</f:entry>
 	
-	<f:entry title="Output Directory" description="The output directory of your build to scan for jars">
-	  <f:textbox field="outputDir" default="${descriptor.defaultOutputDir}" />
+	<f:entry title="Build Directory or File" description="The output directory of your build to scan for jars or the jar file produced by the build.">
+	  <f:textbox field="outputDir" />
+	</f:entry>
+	
+	<f:entry title="Verbose File Scanning" description="During scan print the path of the file and if it's cached or not">
+	  <f:checkbox field="printCheckedFiles" default="false" />
 	</f:entry>
 </j:jelly>
