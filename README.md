@@ -9,7 +9,8 @@ Red Hat security teams.
 ## Getting Started
 
 To build the plugin simply run 
-```mvn install
+```sh
+  mvn install
 ```
 
 This will produce victims-plugin-jenkins.hpi in the target directory which can be installed through Jenkins' plugin manager.
