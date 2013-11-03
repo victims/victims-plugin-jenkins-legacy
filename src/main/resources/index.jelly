@@ -1,0 +1,8 @@
+<!--
+	This view is used to render the plugin list page.
+	
+	We don't have any dynamic content, just show static HTML
+-->
+<div>
+	This plugin will scan the output of your build and check to see if any of your dependencies contain known vulnerabilities as listed in the Victi.ms database.
+</div>

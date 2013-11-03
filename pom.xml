@@ -1,0 +1,87 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.jenkins-ci.plugins</groupId>
+    <artifactId>plugin</artifactId>
+    <version>1.509.4</version><!-- which version of Jenkins is this plugin built against? -->
+  </parent>
+
+  <groupId>com.redhat.victims.plugin.jenkins</groupId>
+  <artifactId>victims-plugin-jenkins</artifactId>
+  <version>1.0</version>
+  <packaging>hpi</packaging>
+  <name>victims-plugin-jenkins</name>
+  <url>http://victi.ms</url>
+  <description>A Jenkins plugin providing an interface into the Victims project</description>
+  <organization>
+  	<name>The Victims Project</name>
+  	<url>http://victi.ms</url>
+  </organization>
+  <inceptionYear>2013</inceptionYear>
+  <licenses>
+  	<license>
+	    <name>GNU Affero General Public License, Version 3</name>
+        <url>http://www.gnu.org/licenses/agp1-3.0.txt</url>
+        <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+  	<developer>
+  		<id>isaacanderson</id>
+  		<name>Isaac Anderson</name>
+  		<url>https://github.com/isaacanderson</url>
+  	</developer>
+  </developers>
+  
+  <dependencies>
+  	<dependency>
+  		<groupId>net.java.dev.jna</groupId>
+  		<artifactId>jna</artifactId>
+  		<version>3.2.2</version>
+  	</dependency>
+  	<dependency>
+      <groupId>com.redhat.victims</groupId>
+      <artifactId>victims-lib</artifactId>
+      <version>1.3.1</version>
+   </dependency>
+   <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.11</version>
+      <scope>test</scope>
+   </dependency>
+	<dependency>
+	   <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId>
+      <version>2.4</version>
+   </dependency>    
+  </dependencies>
+
+  <!-- get every artifact through repo.jenkins-ci.org, which proxies all the artifacts that we need -->
+  <repositories>
+    <repository>
+      <id>repo.jenkins-ci.org</id>
+      <url>http://repo.jenkins-ci.org/public/</url>
+    </repository>
+  </repositories>
+
+  <pluginRepositories>
+    <pluginRepository>
+      <id>repo.jenkins-ci.org</id>
+      <url>http://repo.jenkins-ci.org/public/</url>
+    </pluginRepository>
+  </pluginRepositories>
+  
+  <build>
+   <plugins>
+    <plugin>
+      <groupId>org.jenkins-ci.tools</groupId>
+      <artifactId>maven-hpi-plugin</artifactId>
+      <configuration>
+        <pluginFirstClassLoader>true</pluginFirstClassLoader>
+      </configuration>
+    </plugin>
+   </plugins>
+  </build>
+
+</project>

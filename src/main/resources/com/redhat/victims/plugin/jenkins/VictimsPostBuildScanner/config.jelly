@@ -1,0 +1,46 @@
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+	
+	<f:entry title="Base Url" description="The URL of the web service to be used to synchronise the local database.">
+		<f:textbox field="baseUrl" default="${descriptor.defaultBaseUrl}" />
+	</f:entry>
+	
+	<f:entry title="Entry Point" description="The entrypoint of the victims webservice to synchronise against.">
+		<f:textbox field="entryPoint" default="${descriptor.defaultEntryPoint}" />
+	</f:entry>
+	
+	<f:entry title="Metadata Match" field="metadata" description="Severity of exception thrown when a dependency is encountered that matches the known vulnerable database based on metadata.">
+		<f:select />
+	</f:entry>
+	
+	<f:entry title="Fingerprint Match" field="fingerprint" description="Severity of exception thrown when a dependency is encountered that matches the known vulnerable database based on the fingerprint.">
+		<f:select />
+	</f:entry>
+	
+	<f:entry title="Update Frequency" field="updates"  description="The frequency at which the local database is synchronised.">
+		<f:select />
+	</f:entry>
+	
+	<f:entry title="JDBC Driver" description="The jdbc driver to use for the local victims databse.">
+		<f:textbox field="jdbcDriver" default="${descriptor.defaultJdbcDriver}" />
+	</f:entry>
+	
+	<f:entry title="JDBC Url" description="The jdbc connection URL/Path to the local victims database.">
+		<f:textbox field="jdbcUrl" default="${descriptor.defaultJdbcUrl}" />
+	</f:entry>
+	
+	<f:entry title="JDBC Username" description="The username to use for the jdbc connection.">
+		<f:textbox field="jdbcUsername" default="${descriptor.defaultJdbcUsername}" />
+	</f:entry>
+	
+	<f:entry title="JDBC Password" description="The password to use for the jdbc connection.">
+		<f:textbox field="jdbcPassword" default="${descriptor.defaultJdbcPassword}" />
+	</f:entry>
+	
+	<f:entry title="Build Directory or File" description="The output directory of your build to scan for jars or the jar file produced by the build.">
+	  <f:textbox field="outputDir" />
+	</f:entry>
+	
+	<f:entry title="Verbose File Scanning" description="During scan print the path of the file and if it's cached or not">
+	  <f:checkbox field="printCheckedFiles" default="false" />
+	</f:entry>
+</j:jelly>
